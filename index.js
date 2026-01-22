@@ -26,12 +26,20 @@ let db = null;
 let firebaseInitialized = false;
 
 try {
+  // Cek apakah sudah ada Firebase app yang diinisialisasi
   if (admin.apps.length === 0) {
+    // Untuk Vercel (production)
     if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
       console.log('Initializing Firebase for Vercel/Production...');
       
+      // Pastikan environment variables ada
       if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_PRIVATE_KEY || !process.env.FIREBASE_CLIENT_EMAIL) {
-        console.error('MISSING FIREBASE ENVIRONMENT VARIABLES');
+        console.error('MISSING FIREBASE ENVIRONMENT VARIABLES:');
+        console.error('FIREBASE_PROJECT_ID:', process.env.FIREBASE_PROJECT_ID ? '✓ Set' : '✗ Missing');
+        console.error('FIREBASE_CLIENT_EMAIL:', process.env.FIREBASE_CLIENT_EMAIL ? '✓ Set' : '✗ Missing');
+        console.error('FIREBASE_PRIVATE_KEY:', process.env.FIREBASE_PRIVATE_KEY ? `✓ Set (length: ${process.env.FIREBASE_PRIVATE_KEY.length})` : '✗ Missing');
+        
+        // Untuk sementara, kita buat tanpa Firebase (mode demo)
         console.log('Running in DEMO mode without Firebase');
       } else {
         const serviceAccount = {
@@ -49,13 +57,16 @@ try {
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount)
         });
-        console.log('✅ Firebase initialized successfully');
+        console.log('✅ Firebase initialized successfully on Vercel');
         firebaseInitialized = true;
       }
-    } else {
+    } 
+    // Untuk local development
+    else {
       console.log('Initializing Firebase for Local Development...');
       
       try {
+        // Coba load dari file
         const serviceAccount = require('./serviceAccountKey.json');
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount)
@@ -72,6 +83,7 @@ try {
     firebaseInitialized = true;
   }
   
+  // Set db jika Firebase berhasil diinisialisasi
   if (firebaseInitialized) {
     db = admin.firestore();
     console.log('✅ Firestore database initialized');
@@ -86,6 +98,7 @@ const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadDir = process.env.VERCEL ? '/tmp/uploads' : 'uploads';
     
+    // Buat folder jika belum ada
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
@@ -100,8 +113,11 @@ const storage = multer.diskStorage({
 
 const upload = multer({ 
   storage: storage,
-  limits: { fileSize: 1024 * 1024 },
+  limits: {
+    fileSize: 1024 * 1024 // 1MB
+  },
   fileFilter: function (req, file, cb) {
+    // Hanya terima file .txt
     if (file.mimetype === 'text/plain' || path.extname(file.originalname) === '.txt') {
       cb(null, true);
     } else {
@@ -117,21 +133,142 @@ const MATA_PELAJARAN = 'KK TKJ';
 const KELAS = 'XII TKJ 3';
 
 // ========== MIDDLEWARE ==========
+// Middleware untuk cek koneksi database
 const checkDatabase = (req, res, next) => {
   if (!db || !firebaseInitialized) {
+    // Jika Firebase tidak tersedia, gunakan data dummy
     req.demoMode = true;
     console.log('⚠️ Running in DEMO mode');
   }
   next();
 };
 
+// Middleware untuk error handling
 app.use((req, res, next) => {
   res.locals.demoMode = !firebaseInitialized;
   next();
 });
 
+// ========== FUNGSI PREPARE TEMPLATE DATA ==========
+// FUNGSI PREPARE TEMPLATE DATA - FIXED LENGKAP
+function prepareTemplateData(laporan) {
+  // Header data
+  const headerData = {
+    sekolah: laporan.sekolah || SEKOLAH,
+    guru: laporan.guru || GURU,
+    mataPelajaran: laporan.mataPelajaran || MATA_PELAJARAN,
+    tanggal: laporan.tanggal || '.........',
+    kelas: laporan.kelas || KELAS  // Tambahkan kelas untuk template
+  };
+  
+  // Format data jadwal
+  const jadwalData = [];
+  if (laporan.jadwal && laporan.jadwal.length > 0) {
+    laporan.jadwal.forEach((item) => {
+      jadwalData.push({
+        jamKe: item.jamKe || '...',
+        kelas: laporan.kelas || KELAS,
+        materi: item.materi || '.....................',
+        metode: item.metode || '.....................',
+        media: item.media || '..................',
+        catatan: item.catatan || '.....................'
+      });
+    });
+  }
+  
+  // Format data kehadiran
+  const kehadiranData = [];
+  if (laporan.kehadiran && laporan.kehadiran.length > 0) {
+    laporan.kehadiran.forEach((item, index) => {
+      kehadiranData.push({
+        no: (index + 1).toString(),
+        nama: item.siswaNama || '...',
+        status: item.status || '...',
+        partisipasi: (item.partisipasi || '...').toUpperCase(),
+        catatan: item.catatan || '...'
+      });
+    });
+  }
+  
+  // Format kendala - SELALU ADA MINIMAL 3 BARIS
+  const kendalaData = [];
+  if (laporan.kendala && laporan.kendala.trim() !== '') {
+    const lines = laporan.kendala.split('\n').filter(line => line.trim());
+    lines.forEach(line => {
+      kendalaData.push({ text: line.trim() });
+    });
+  }
+  
+  // Tambahkan baris titik-titik sampai minimal 3 baris
+  while (kendalaData.length < 3) {
+    kendalaData.push({ text: '.....................................................................' });
+  }
+  
+  // Format tindak lanjut - SELALU ADA MINIMAL 2 BARIS
+  const tindakLanjutData = [];
+  if (laporan.tindakLanjut && laporan.tindakLanjut.length > 0) {
+    laporan.tindakLanjut.forEach((item) => {
+      // Tambahkan jika ada data (tidak semua kosong)
+      if (item.siswa && item.siswa.trim() !== '') {
+        // Gunakan jenis yang dipilih user, atau default ke "Remedial / Pengayaan"
+        let jenisText = 'Remedial / Pengayaan';
+        if (item.jenis && item.jenis.trim() !== '') {
+          jenisText = item.jenis.trim(); // "Remedial" atau "Pengayaan" saja
+        }
+        
+        tindakLanjutData.push({
+          siswa: item.siswa.trim(),
+          jenis: jenisText,
+          waktu: item.waktu && item.waktu.trim() !== '' ? item.waktu.trim() : '...',
+          catatan: item.catatan && item.catatan.trim() !== '' ? item.catatan.trim() : '...'
+        });
+      }
+    });
+  }
+  
+  // Tambahkan baris titik-titik sampai minimal 2 baris
+  while (tindakLanjutData.length < 2) {
+    tindakLanjutData.push({
+      siswa: '...',
+      jenis: 'Remedial / Pengayaan',
+      waktu: '...',
+      catatan: '...'
+    });
+  }
+  
+  // Format catatan tambahan - SELALU ADA MINIMAL 2 BARIS
+  const catatanData = [];
+  if (laporan.catatanTambahan && laporan.catatanTambahan.trim() !== '') {
+    const lines = laporan.catatanTambahan.split('\n').filter(line => line.trim());
+    lines.forEach(line => {
+      catatanData.push({ text: line.trim() });
+    });
+  }
+  
+  // Tambahkan baris titik-titik sampai minimal 2 baris
+  while (catatanData.length < 2) {
+    catatanData.push({ text: '.....................................................................' });
+  }
+  
+  console.log('=== DEBUG DATA ===');
+  console.log('Kendala:', kendalaData);
+  console.log('Tindak Lanjut:', tindakLanjutData);
+  console.log('Catatan:', catatanData);
+  console.log('==================');
+  
+  return {
+    ...headerData,
+    jadwal: jadwalData,
+    kehadiran: kehadiranData,
+    kendala: kendalaData,
+    tindakLanjut: tindakLanjutData,
+    catatan: catatanData
+  };
+}
+
 // ========== ROUTES ==========
 
+// Rute utama - Form Laporan
 app.get('/', checkDatabase, async (req, res) => {
   try {
     let siswaList = [];
@@ -143,6 +280,7 @@ app.get('/', checkDatabase, async (req, res) => {
         ...doc.data()
       }));
     } else {
+      // Data dummy untuk demo
       siswaList = [
         { id: '1', nama: 'SISWA DEMO 1', urutan: 1 },
         { id: '2', nama: 'SISWA DEMO 2', urutan: 2 },
@@ -168,6 +306,7 @@ app.get('/', checkDatabase, async (req, res) => {
   }
 });
 
+// Rute untuk halaman siswa
 app.get('/siswa', checkDatabase, async (req, res) => {
   try {
     let siswaList = [];
@@ -176,6 +315,7 @@ app.get('/siswa', checkDatabase, async (req, res) => {
       const siswaSnapshot = await db.collection('siswa').orderBy('urutan', 'asc').get();
       siswaList = siswaSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     } else {
+      // Data dummy untuk demo
       siswaList = [
         { id: 'demo1', nama: 'SISWA DEMO 1', urutan: 1, createdAt: new Date() },
         { id: 'demo2', nama: 'SISWA DEMO 2', urutan: 2, createdAt: new Date() },
@@ -196,6 +336,7 @@ app.get('/siswa', checkDatabase, async (req, res) => {
   }
 });
 
+// Rute untuk menambahkan siswa
 app.post('/siswa/tambah', checkDatabase, async (req, res) => {
   try {
     const { nama } = req.body;
@@ -224,6 +365,7 @@ app.post('/siswa/tambah', checkDatabase, async (req, res) => {
       
       res.redirect('/siswa');
     } else {
+      // Demo mode - tampilkan pesan
       res.render('message', {
         title: 'Demo Mode',
         message: 'Fitur ini tidak tersedia dalam mode demo. Database Firebase belum dikonfigurasi.',
@@ -240,6 +382,7 @@ app.post('/siswa/tambah', checkDatabase, async (req, res) => {
   }
 });
 
+// Upload siswa
 app.post('/siswa/upload', checkDatabase, upload.single('fileSiswa'), async (req, res) => {
   try {
     if (!req.file) {
@@ -255,6 +398,7 @@ app.post('/siswa/upload', checkDatabase, upload.single('fileSiswa'), async (req,
       .map(line => line.trim())
       .filter(line => line !== '');
     
+    // Hapus file temp
     try {
       fs.unlinkSync(filePath);
     } catch (unlinkError) {
@@ -295,6 +439,7 @@ app.post('/siswa/upload', checkDatabase, upload.single('fileSiswa'), async (req,
       await batch.commit();
       res.redirect('/siswa');
     } else {
+      // Demo mode
       res.render('message', {
         title: 'Demo Mode',
         message: `File berhasil dibaca (${namaSiswa.length} siswa). Database Firebase belum dikonfigurasi.`,
@@ -311,7 +456,7 @@ app.post('/siswa/upload', checkDatabase, upload.single('fileSiswa'), async (req,
   }
 });
 
-// Hapus siswa
+// ========== ROUTE BARU: HAPUS SISWA ==========
 app.post('/siswa/hapus/:id', checkDatabase, async (req, res) => {
   try {
     const { id } = req.params;
@@ -336,6 +481,7 @@ app.post('/siswa/hapus/:id', checkDatabase, async (req, res) => {
   }
 });
 
+// Simpan laporan harian
 app.post('/simpan-laporan', checkDatabase, async (req, res) => {
   try {
     const data = req.body;
@@ -402,6 +548,7 @@ app.post('/simpan-laporan', checkDatabase, async (req, res) => {
         id: docRef.id
       });
     } else {
+      // Demo mode - simpan ke file temporary
       const demoId = 'demo-' + Date.now();
       res.json({ 
         success: true, 
@@ -420,6 +567,7 @@ app.post('/simpan-laporan', checkDatabase, async (req, res) => {
   }
 });
 
+// Halaman rekap
 app.get('/rekap', checkDatabase, async (req, res) => {
   try {
     let laporanList = [];
@@ -427,7 +575,7 @@ app.get('/rekap', checkDatabase, async (req, res) => {
     if (db && firebaseInitialized) {
       const laporanSnapshot = await db.collection('laporan')
         .orderBy('createdAt', 'desc')
-        .limit(50)
+        .limit(50) // Batasi untuk performance
         .get();
       
       laporanList = laporanSnapshot.docs.map(doc => ({
@@ -435,6 +583,7 @@ app.get('/rekap', checkDatabase, async (req, res) => {
         ...doc.data()
       }));
     } else {
+      // Data dummy untuk demo
       laporanList = [
         {
           id: 'demo1',
@@ -461,7 +610,7 @@ app.get('/rekap', checkDatabase, async (req, res) => {
   }
 });
 
-// Edit laporan - GET
+// ========== ROUTE BARU: EDIT LAPORAN (GET) ==========
 app.get('/rekap/edit/:id', checkDatabase, async (req, res) => {
   try {
     const { id } = req.params;
@@ -521,7 +670,7 @@ app.get('/rekap/edit/:id', checkDatabase, async (req, res) => {
   }
 });
 
-// Hapus laporan
+// ========== ROUTE BARU: HAPUS LAPORAN (POST) ==========
 app.post('/rekap/hapus/:id', checkDatabase, async (req, res) => {
   try {
     const { id } = req.params;
@@ -546,7 +695,7 @@ app.post('/rekap/hapus/:id', checkDatabase, async (req, res) => {
   }
 });
 
-// Ekspor ke DOCX
+// ========== ROUTE BARU: EKSPOR KE DOCX (GET) ==========
 app.get('/ekspor/:id', checkDatabase, async (req, res) => {
   try {
     const { id } = req.params;
@@ -571,67 +720,78 @@ app.get('/ekspor/:id', checkDatabase, async (req, res) => {
     
     const laporan = laporanDoc.data();
     
-    // Load template
+    // Path ke template DOCX
     const templatePath = path.join(__dirname, 'templates', 'LAPORAN HERMAWAN.docx');
     
+    // Cek apakah template ada
     if (!fs.existsSync(templatePath)) {
       return res.status(500).render('error', {
-        message: 'Template DOCX tidak ditemukan',
+        message: 'Template DOCX tidak ditemukan. Pastikan file "LAPORAN HERMAWAN.docx" ada di folder templates/',
         demoMode: !firebaseInitialized
       });
     }
     
+    // Baca template
     const content = fs.readFileSync(templatePath, 'binary');
     const zip = new PizZip(content);
-    const doc = new Docxtemplater(zip, {
-      paragraphLoop: true,
-      linebreaks: true
+    
+    let docxTemplate;
+    try {
+      docxTemplate = new Docxtemplater(zip, {
+        paragraphLoop: true,
+        linebreaks: true,
+      });
+    } catch (error) {
+      console.error('Error loading template:', error);
+      return res.status(500).render('error', {
+        message: 'Error loading template: ' + error.message,
+        demoMode: !firebaseInitialized
+      });
+    }
+    
+    // Siapkan data untuk template
+    const templateData = prepareTemplateData(laporan);
+    
+    console.log('=== TEMPLATE DATA ===');
+    console.log(JSON.stringify(templateData, null, 2));
+    console.log('===================');
+    
+    // Set data ke template
+    try {
+      docxTemplate.setData(templateData);
+      docxTemplate.render();
+    } catch (error) {
+      console.error('Error rendering template:', error);
+      if (error.properties && error.properties.errors) {
+        console.error('Detailed errors:', error.properties.errors);
+      }
+      return res.status(500).render('error', {
+        message: 'Error rendering template: ' + error.message,
+        demoMode: !firebaseInitialized
+      });
+    }
+    
+    // Generate buffer
+    const buffer = docxTemplate.getZip().generate({
+      type: 'nodebuffer',
+      compression: 'DEFLATE'
     });
     
-    // Format data untuk template
-    const jadwalFormatted = laporan.jadwal?.map(j => 
-      `${j.jamKe} - ${j.materi} (${j.metode}, ${j.media})`
-    ).join('\n') || '-';
-    
-    const kehadiranFormatted = laporan.kehadiran?.map((k, i) => 
-      `${i+1}. ${k.siswaNama}: ${k.status}`
-    ).join('\n') || '-';
-    
-    const tindakLanjutFormatted = laporan.tindakLanjut?.map(t => 
-      `${t.siswa} - ${t.jenis} (${t.waktu})`
-    ).join('\n') || '-';
-    
-    // Set data
-    doc.setData({
-      sekolah: laporan.sekolah || SEKOLAH,
-      guru: laporan.guru || GURU,
-      mataPelajaran: laporan.mataPelajaran || MATA_PELAJARAN,
-      kelas: laporan.kelas || KELAS,
-      tanggal: laporan.tanggal,
-      jadwal: jadwalFormatted,
-      kehadiran: kehadiranFormatted,
-      kendala: laporan.kendala || '-',
-      tindakLanjut: tindakLanjutFormatted,
-      catatanTambahan: laporan.catatanTambahan || '-'
-    });
-    
-    doc.render();
-    
-    const buf = doc.getZip().generate({ type: 'nodebuffer' });
-    
+    // Kirim sebagai file download
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    res.setHeader('Content-Disposition', `attachment; filename=Laporan_${laporan.tanggalKey}.docx`);
-    res.send(buf);
+    res.setHeader('Content-Disposition', `attachment; filename="Laporan_Harian_${laporan.tanggalKey || 'laporan'}.docx"`);
+    res.send(buffer);
     
   } catch (error) {
-    console.error('Error in /ekspor route:', error);
+    console.error('Error:', error);
     res.status(500).render('error', { 
-      message: 'Error ekspor: ' + error.message,
+      message: 'Error: ' + error.message,
       demoMode: !firebaseInitialized
     });
   }
 });
 
+// Debug route untuk cek environment
 app.get('/debug', (req, res) => {
   res.json({
     nodeEnv: process.env.NODE_ENV,
@@ -645,6 +805,7 @@ app.get('/debug', (req, res) => {
   });
 });
 
+// Health check route
 app.get('/health', (req, res) => {
   res.json({
     status: 'OK',
@@ -653,6 +814,7 @@ app.get('/health', (req, res) => {
   });
 });
 
+// 404 Handler
 app.use((req, res) => {
   res.status(404).render('error', {
     message: 'Halaman tidak ditemukan',
@@ -660,6 +822,7 @@ app.use((req, res) => {
   });
 });
 
+// Error handler
 app.use((err, req, res, next) => {
   console.error('Global error handler:', err);
   res.status(500).render('error', {
@@ -668,9 +831,15 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Start server
 if (process.env.NODE_ENV !== 'production') {
   app.listen(port, () => {
     console.log(`Server berjalan di http://localhost:${port}`);
+    console.log(`Form Laporan: http://localhost:${port}`);
+    console.log(`Data Siswa: http://localhost:${port}/siswa`);
+    console.log(`Rekap Laporan: http://localhost:${port}/rekap`);
+    console.log(`Debug: http://localhost:${port}/debug`);
+    console.log(`Health: http://localhost:${port}/health`);
   });
 }
 
