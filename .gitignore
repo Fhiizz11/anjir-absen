@@ -1,0 +1,11 @@
+node_modules/
+uploads/
+serviceAccountKey.json
+.env
+*.log
+.DS_Store
+.vscode/
+.vercel/
+LAPORAN ASTRI.docx
+LAPORAN HERMAWAN.docx
+siswa.txt
