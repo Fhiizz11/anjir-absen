@@ -129,7 +129,7 @@ const upload = multer({
 // Data konstan
 const SEKOLAH = 'SMK N 1 CIKARANG UTARA';
 const GURU = 'HERMAWAN, S.Kom';
-const MATA_PELAJARAN = 'KK TKJ';
+const MATA_PELAJARAN = 'PKWU';
 const KELAS = 'XII TKJ 3';
 
 // ========== MIDDLEWARE ==========
