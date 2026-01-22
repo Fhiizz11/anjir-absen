@@ -6,6 +6,8 @@ const { id } = require('date-fns/locale');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
+const PizZip = require('pizzip');
+const Docxtemplater = require('docxtemplater');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -309,6 +311,31 @@ app.post('/siswa/upload', checkDatabase, upload.single('fileSiswa'), async (req,
   }
 });
 
+// Hapus siswa
+app.post('/siswa/hapus/:id', checkDatabase, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (db && firebaseInitialized) {
+      await db.collection('siswa').doc(id).delete();
+      res.redirect('/siswa');
+    } else {
+      res.render('message', {
+        title: 'Demo Mode',
+        message: 'Fitur hapus tidak tersedia dalam mode demo.',
+        redirectUrl: '/siswa',
+        demoMode: true
+      });
+    }
+  } catch (error) {
+    console.error('Error in /siswa/hapus route:', error);
+    res.status(500).render('error', { 
+      message: 'Error: ' + error.message,
+      demoMode: !firebaseInitialized
+    });
+  }
+});
+
 app.post('/simpan-laporan', checkDatabase, async (req, res) => {
   try {
     const data = req.body;
@@ -429,6 +456,177 @@ app.get('/rekap', checkDatabase, async (req, res) => {
     console.error('Error in /rekap route:', error);
     res.status(500).render('error', { 
       message: 'Error: ' + error.message,
+      demoMode: !firebaseInitialized
+    });
+  }
+});
+
+// Edit laporan - GET
+app.get('/rekap/edit/:id', checkDatabase, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!db || !firebaseInitialized) {
+      return res.render('message', {
+        title: 'Demo Mode',
+        message: 'Fitur edit tidak tersedia dalam mode demo.',
+        redirectUrl: '/rekap',
+        demoMode: true
+      });
+    }
+    
+    const laporanDoc = await db.collection('laporan').doc(id).get();
+    
+    if (!laporanDoc.exists) {
+      return res.status(404).render('error', {
+        message: 'Laporan tidak ditemukan',
+        demoMode: !firebaseInitialized
+      });
+    }
+    
+    const laporan = laporanDoc.data();
+    
+    // Get all siswa
+    const siswaSnapshot = await db.collection('siswa').orderBy('urutan', 'asc').get();
+    const siswaList = siswaSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // Merge siswa with kehadiran data
+    const kehadiranDenganSiswa = siswaList.map(siswa => {
+      const kehadiranData = laporan.kehadiran?.find(k => k.siswaId === siswa.id);
+      return {
+        siswaId: siswa.id,
+        siswaNama: siswa.nama,
+        status: kehadiranData?.status || 'H',
+        partisipasi: kehadiranData?.partisipasi || 'Aktif',
+        catatan: kehadiranData?.catatan || ''
+      };
+    });
+    
+    res.render('edit', {
+      laporanId: id,
+      laporan: laporan,
+      sekolah: SEKOLAH,
+      guru: GURU,
+      mataPelajaran: MATA_PELAJARAN,
+      kelas: KELAS,
+      kehadiranDenganSiswa: kehadiranDenganSiswa,
+      demoMode: !firebaseInitialized
+    });
+  } catch (error) {
+    console.error('Error in /rekap/edit route:', error);
+    res.status(500).render('error', { 
+      message: 'Error: ' + error.message,
+      demoMode: !firebaseInitialized
+    });
+  }
+});
+
+// Hapus laporan
+app.post('/rekap/hapus/:id', checkDatabase, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!db || !firebaseInitialized) {
+      return res.render('message', {
+        title: 'Demo Mode',
+        message: 'Fitur hapus tidak tersedia dalam mode demo.',
+        redirectUrl: '/rekap',
+        demoMode: true
+      });
+    }
+    
+    await db.collection('laporan').doc(id).delete();
+    res.redirect('/rekap');
+  } catch (error) {
+    console.error('Error in /rekap/hapus route:', error);
+    res.status(500).render('error', { 
+      message: 'Error: ' + error.message,
+      demoMode: !firebaseInitialized
+    });
+  }
+});
+
+// Ekspor ke DOCX
+app.get('/ekspor/:id', checkDatabase, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!db || !firebaseInitialized) {
+      return res.render('message', {
+        title: 'Demo Mode',
+        message: 'Fitur ekspor tidak tersedia dalam mode demo.',
+        redirectUrl: '/rekap',
+        demoMode: true
+      });
+    }
+    
+    const laporanDoc = await db.collection('laporan').doc(id).get();
+    
+    if (!laporanDoc.exists) {
+      return res.status(404).render('error', {
+        message: 'Laporan tidak ditemukan',
+        demoMode: !firebaseInitialized
+      });
+    }
+    
+    const laporan = laporanDoc.data();
+    
+    // Load template
+    const templatePath = path.join(__dirname, 'templates', 'LAPORAN HERMAWAN.docx');
+    
+    if (!fs.existsSync(templatePath)) {
+      return res.status(500).render('error', {
+        message: 'Template DOCX tidak ditemukan',
+        demoMode: !firebaseInitialized
+      });
+    }
+    
+    const content = fs.readFileSync(templatePath, 'binary');
+    const zip = new PizZip(content);
+    const doc = new Docxtemplater(zip, {
+      paragraphLoop: true,
+      linebreaks: true
+    });
+    
+    // Format data untuk template
+    const jadwalFormatted = laporan.jadwal?.map(j => 
+      `${j.jamKe} - ${j.materi} (${j.metode}, ${j.media})`
+    ).join('\n') || '-';
+    
+    const kehadiranFormatted = laporan.kehadiran?.map((k, i) => 
+      `${i+1}. ${k.siswaNama}: ${k.status}`
+    ).join('\n') || '-';
+    
+    const tindakLanjutFormatted = laporan.tindakLanjut?.map(t => 
+      `${t.siswa} - ${t.jenis} (${t.waktu})`
+    ).join('\n') || '-';
+    
+    // Set data
+    doc.setData({
+      sekolah: laporan.sekolah || SEKOLAH,
+      guru: laporan.guru || GURU,
+      mataPelajaran: laporan.mataPelajaran || MATA_PELAJARAN,
+      kelas: laporan.kelas || KELAS,
+      tanggal: laporan.tanggal,
+      jadwal: jadwalFormatted,
+      kehadiran: kehadiranFormatted,
+      kendala: laporan.kendala || '-',
+      tindakLanjut: tindakLanjutFormatted,
+      catatanTambahan: laporan.catatanTambahan || '-'
+    });
+    
+    doc.render();
+    
+    const buf = doc.getZip().generate({ type: 'nodebuffer' });
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename=Laporan_${laporan.tanggalKey}.docx`);
+    res.send(buf);
+    
+  } catch (error) {
+    console.error('Error in /ekspor route:', error);
+    res.status(500).render('error', { 
+      message: 'Error ekspor: ' + error.message,
       demoMode: !firebaseInitialized
     });
   }
