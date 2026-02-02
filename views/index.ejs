@@ -91,9 +91,38 @@
             background: #f8f9fa;
             border-radius: 10px;
         }
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+        .loading-overlay.show {
+            display: flex;
+        }
+        .spinner-border-custom {
+            width: 3rem;
+            height: 3rem;
+            border-width: 0.4em;
+        }
     </style>
 </head>
 <body>
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="text-center">
+            <div class="spinner-border spinner-border-custom text-light" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="text-light mt-3">Memuat data siswa...</p>
+        </div>
+    </div>
+
     <div class="header text-center">
         <div class="container">
             <h1><i class="bi bi-journal-text me-2"></i>LAPORAN HARIAN GURU</h1>
@@ -121,7 +150,7 @@
                 </div>
                 <div class="col-md-3">
                     <strong>Mata Pelajaran:</strong><br>
-                    <span class="text-muted"><%= mataPelajaran %></span>
+                    <span class="text-muted" id="displayMapel">-</span>
                 </div>
                 <div class="col-md-3">
                     <strong>Hari/Tanggal:</strong><br>
@@ -131,11 +160,41 @@
         </div>
 
         <form id="laporanForm" action="/simpan-laporan" method="POST">
-            <input type="hidden" name="tanggal" value="<%= new Date().toISOString().split('T')[0] %>">
+            <input type="hidden" name="tanggalKey" value="<%= tanggalKey %>">
             <input type="hidden" name="tanggalDisplay" value="<%= tanggal %>">
+            <input type="hidden" name="mataPelajaran" id="hiddenMataPelajaran">
+            <input type="hidden" name="kelas" id="hiddenKelas">
+            
+            <!-- Pilih Kelas -->
+            <div class="card">
+                <div class="card-header">
+                    <i class="bi bi-bookmark me-2"></i>Pilih Kelas
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <label class="form-label">Kelas <span class="text-danger">*</span></label>
+                            <select class="form-select" id="kelasSelect" name="kelasSelect" required>
+                                <option value="">-- Pilih Kelas --</option>
+                                <% kelasList.forEach(kelas => { %>
+                                    <option value="<%= kelas.id %>" 
+                                            data-nama="<%= kelas.namaKelas %>" 
+                                            data-mapel="<%= kelas.mataPelajaran %>">
+                                        <%= kelas.namaKelas %> - <%= kelas.mataPelajaran %>
+                                    </option>
+                                <% }); %>
+                            </select>
+                            <small class="text-muted">
+                                <i class="bi bi-info-circle me-1"></i>
+                                Pilih kelas untuk memulai mengisi laporan. Data siswa akan otomatis dimuat.
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
             
             <!-- Bagian 1: Jadwal dan Materi -->
-            <div class="card">
+            <div class="card" id="jadwalSection" style="display: none;">
                 <div class="card-header">
                     <i class="bi bi-calendar3 me-2"></i>1. Jadwal dan Materi Pembelajaran
                 </div>
@@ -149,7 +208,7 @@
                                 </div>
                                 <div class="col-md-2">
                                     <label>Kelas</label>
-                                    <input type="text" class="form-control" value="<%= kelas %>" readonly>
+                                    <input type="text" class="form-control" id="displayKelas" readonly>
                                 </div>
                                 <div class="col-md-3">
                                     <label>Materi / Topik</label>
@@ -177,13 +236,13 @@
             </div>
 
             <!-- Bagian 2: Kehadiran Siswa -->
-            <div class="card">
+            <div class="card" id="kehadiranSection" style="display: none;">
                 <div class="card-header">
                     <i class="bi bi-person-check me-2"></i>2. Kehadiran & Partisipasi Siswa
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
-                        <table class="table table-hover">
+                        <table class="table table-hover" id="siswaTable">
                             <thead>
                                 <tr>
                                     <th width="5%">No</th>
@@ -193,33 +252,12 @@
                                     <th width="30%">Catatan</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                <% siswaList.forEach((siswa, index) => { %>
+                            <tbody id="siswaTableBody">
                                 <tr>
-                                    <td><%= index + 1 %></td>
-                                    <td>
-                                        <input type="hidden" name="siswaId[]" value="<%= siswa.id %>">
-                                        <input type="hidden" name="siswaNama[]" value="<%= siswa.nama %>">
-                                        <%= siswa.nama %>
-                                    </td>
-                                    <td>
-                                        <select class="form-select" name="kehadiran[]">
-                                            <option value="H" selected>H (Hadir)</option>
-                                            <option value="I">I (Izin)</option>
-                                            <option value="S">S (Sakit)</option>
-                                        </select>
-                                    </td>
-                                    <td>
-                                        <select class="form-select" name="partisipasi[]">
-                                            <option value="Aktif" selected>Aktif</option>
-                                            <option value="Pasif">Pasif</option>
-                                        </select>
-                                    </td>
-                                    <td>
-                                        <input type="text" class="form-control" name="catatanSiswa[]" placeholder="Catatan">
+                                    <td colspan="5" class="text-center text-muted">
+                                        <i class="bi bi-info-circle me-2"></i>Pilih kelas terlebih dahulu
                                     </td>
                                 </tr>
-                                <% }); %>
                             </tbody>
                         </table>
                         <small class="text-muted">*Semua siswa otomatis Hadir dan Aktif. Ubah hanya untuk siswa yang berbeda.</small>
@@ -228,7 +266,7 @@
             </div>
 
             <!-- Bagian 3: Kendala -->
-            <div class="card">
+            <div class="card" id="kendalaSection" style="display: none;">
                 <div class="card-header">
                     <i class="bi bi-exclamation-triangle me-2"></i>3. Kendala / Masalah dalam Pembelajaran
                 </div>
@@ -238,7 +276,7 @@
             </div>
 
             <!-- Bagian 4: Tindak Lanjut -->
-            <div class="card">
+            <div class="card" id="tindakLanjutSection" style="display: none;">
                 <div class="card-header">
                     <i class="bi bi-arrow-repeat me-2"></i>4. Tindak Lanjut / Remedial / Pengayaan
                 </div>
@@ -276,7 +314,7 @@
             </div>
 
             <!-- Bagian 5: Catatan Tambahan -->
-            <div class="card">
+            <div class="card" id="catatanSection" style="display: none;">
                 <div class="card-header">
                     <i class="bi bi-chat-text me-2"></i>5. Catatan Tambahan
                 </div>
@@ -286,7 +324,7 @@
             </div>
 
             <!-- Tombol Submit -->
-                         <div class="text-center mt-4 mb-5">
+            <div class="text-center mt-4 mb-5" id="submitSection" style="display: none;">
                 <button type="submit" class="btn btn-primary btn-lg me-3">
                     <i class="bi bi-save me-2"></i>Simpan Laporan
                 </button>
@@ -322,6 +360,123 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        let selectedKelasNama = '';
+        
+        // Event listener untuk pilih kelas
+        document.getElementById('kelasSelect').addEventListener('change', async function() {
+            const selectedOption = this.options[this.selectedIndex];
+            const kelasId = this.value;
+            const kelasNama = selectedOption.getAttribute('data-nama');
+            const mataPelajaran = selectedOption.getAttribute('data-mapel');
+            
+            if (!kelasId) {
+                // Reset form
+                document.getElementById('siswaTableBody').innerHTML = `
+                    <tr>
+                        <td colspan="5" class="text-center text-muted">
+                            <i class="bi bi-info-circle me-2"></i>Pilih kelas terlebih dahulu
+                        </td>
+                    </tr>
+                `;
+                document.getElementById('displayMapel').textContent = '-';
+                document.getElementById('displayKelas').value = '';
+                document.getElementById('hiddenMataPelajaran').value = '';
+                document.getElementById('hiddenKelas').value = '';
+                selectedKelasNama = '';
+                
+                // Hide all sections
+                document.getElementById('jadwalSection').style.display = 'none';
+                document.getElementById('kehadiranSection').style.display = 'none';
+                document.getElementById('kendalaSection').style.display = 'none';
+                document.getElementById('tindakLanjutSection').style.display = 'none';
+                document.getElementById('catatanSection').style.display = 'none';
+                document.getElementById('submitSection').style.display = 'none';
+                return;
+            }
+            
+            // Update display
+            document.getElementById('displayMapel').textContent = mataPelajaran;
+            document.getElementById('displayKelas').value = kelasNama;
+            document.getElementById('hiddenMataPelajaran').value = mataPelajaran;
+            document.getElementById('hiddenKelas').value = kelasNama;
+            selectedKelasNama = kelasNama;
+            
+            // Show all sections
+            document.getElementById('jadwalSection').style.display = 'block';
+            document.getElementById('kehadiranSection').style.display = 'block';
+            document.getElementById('kendalaSection').style.display = 'block';
+            document.getElementById('tindakLanjutSection').style.display = 'block';
+            document.getElementById('catatanSection').style.display = 'block';
+            document.getElementById('submitSection').style.display = 'block';
+            
+            // Show loading
+            document.getElementById('loadingOverlay').classList.add('show');
+            
+            try {
+                // Load siswa data
+                const response = await fetch(`/api/siswa/${kelasId}`);
+                const siswaList = await response.json();
+                
+                const tbody = document.getElementById('siswaTableBody');
+                
+                if (siswaList.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="text-center text-muted">
+                                <i class="bi bi-exclamation-circle me-2"></i>Belum ada data siswa untuk kelas ini.
+                                <a href="/siswa/kelas/${kelasId}" class="btn btn-sm btn-primary ms-2">
+                                    <i class="bi bi-plus-circle me-1"></i>Tambah Siswa
+                                </a>
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    tbody.innerHTML = '';
+                    siswaList.forEach((siswa, index) => {
+                        const row = `
+                            <tr>
+                                <td>${index + 1}</td>
+                                <td>
+                                    <input type="hidden" name="siswaId[]" value="${siswa.id}">
+                                    <input type="hidden" name="siswaNama[]" value="${siswa.nama}">
+                                    ${siswa.nama}
+                                </td>
+                                <td>
+                                    <select class="form-select" name="kehadiran[]">
+                                        <option value="H" selected>H (Hadir)</option>
+                                        <option value="I">I (Izin)</option>
+                                        <option value="S">S (Sakit)</option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <select class="form-select" name="partisipasi[]">
+                                        <option value="Aktif" selected>Aktif</option>
+                                        <option value="Pasif">Pasif</option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <input type="text" class="form-control" name="catatanSiswa[]" placeholder="Catatan">
+                                </td>
+                            </tr>
+                        `;
+                        tbody.innerHTML += row;
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading siswa:', error);
+                document.getElementById('siswaTableBody').innerHTML = `
+                    <tr>
+                        <td colspan="5" class="text-center text-danger">
+                            <i class="bi bi-x-circle me-2"></i>Gagal memuat data siswa: ${error.message}
+                        </td>
+                    </tr>
+                `;
+            } finally {
+                // Hide loading
+                document.getElementById('loadingOverlay').classList.remove('show');
+            }
+        });
+        
         // Tambah baris jadwal
         function tambahJadwal() {
             const container = document.getElementById('jadwalContainer');
@@ -333,7 +488,7 @@
                         <input type="text" class="form-control" name="jamKe[]" placeholder="1-2">
                     </div>
                     <div class="col-md-2">
-                        <input type="text" class="form-control" value="<%= kelas %>" readonly>
+                        <input type="text" class="form-control" value="${selectedKelasNama}" readonly>
                     </div>
                     <div class="col-md-3">
                         <input type="text" class="form-control" name="materi[]" placeholder="Materi pembelajaran">
@@ -416,7 +571,7 @@
                 
                 if (result.success) {
                     document.getElementById('successMessage').textContent = 
-                        `Laporan untuk tanggal ${formDataObj.tanggalDisplay} berhasil disimpan.`;
+                        `Laporan untuk ${formDataObj.kelas} - ${formDataObj.tanggalDisplay} berhasil disimpan.`;
                     const modal = new bootstrap.Modal(document.getElementById('successModal'));
                     modal.show();
                 } else {

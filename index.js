@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const PizZip = require('pizzip');
 const Docxtemplater = require('docxtemplater');
+const ExcelJS = require('exceljs');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -26,20 +27,12 @@ let db = null;
 let firebaseInitialized = false;
 
 try {
-  // Cek apakah sudah ada Firebase app yang diinisialisasi
   if (admin.apps.length === 0) {
-    // Untuk Vercel (production)
     if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
       console.log('Initializing Firebase for Vercel/Production...');
       
-      // Pastikan environment variables ada
       if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_PRIVATE_KEY || !process.env.FIREBASE_CLIENT_EMAIL) {
-        console.error('MISSING FIREBASE ENVIRONMENT VARIABLES:');
-        console.error('FIREBASE_PROJECT_ID:', process.env.FIREBASE_PROJECT_ID ? '✓ Set' : '✗ Missing');
-        console.error('FIREBASE_CLIENT_EMAIL:', process.env.FIREBASE_CLIENT_EMAIL ? '✓ Set' : '✗ Missing');
-        console.error('FIREBASE_PRIVATE_KEY:', process.env.FIREBASE_PRIVATE_KEY ? `✓ Set (length: ${process.env.FIREBASE_PRIVATE_KEY.length})` : '✗ Missing');
-        
-        // Untuk sementara, kita buat tanpa Firebase (mode demo)
+        console.error('MISSING FIREBASE ENVIRONMENT VARIABLES');
         console.log('Running in DEMO mode without Firebase');
       } else {
         const serviceAccount = {
@@ -60,13 +53,10 @@ try {
         console.log('✅ Firebase initialized successfully on Vercel');
         firebaseInitialized = true;
       }
-    } 
-    // Untuk local development
-    else {
+    } else {
       console.log('Initializing Firebase for Local Development...');
       
       try {
-        // Coba load dari file
         const serviceAccount = require('./serviceAccountKey.json');
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount)
@@ -83,7 +73,6 @@ try {
     firebaseInitialized = true;
   }
   
-  // Set db jika Firebase berhasil diinisialisasi
   if (firebaseInitialized) {
     db = admin.firestore();
     console.log('✅ Firestore database initialized');
@@ -98,7 +87,6 @@ const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadDir = process.env.VERCEL ? '/tmp/uploads' : 'uploads';
     
-    // Buat folder jika belum ada
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
@@ -114,10 +102,9 @@ const storage = multer.diskStorage({
 const upload = multer({ 
   storage: storage,
   limits: {
-    fileSize: 1024 * 1024 // 1MB
+    fileSize: 1024 * 1024
   },
   fileFilter: function (req, file, cb) {
-    // Hanya terima file .txt
     if (file.mimetype === 'text/plain' || path.extname(file.originalname) === '.txt') {
       cb(null, true);
     } else {
@@ -129,45 +116,54 @@ const upload = multer({
 // Data konstan
 const SEKOLAH = 'SMK N 1 CIKARANG UTARA';
 const GURU = 'HERMAWAN, S.Kom';
-const MATA_PELAJARAN = 'PKWU';
-const KELAS = 'XII TKJ 3';
 
 // ========== MIDDLEWARE ==========
-// Middleware untuk cek koneksi database
 const checkDatabase = (req, res, next) => {
   if (!db || !firebaseInitialized) {
-    // Jika Firebase tidak tersedia, gunakan data dummy
     req.demoMode = true;
     console.log('⚠️ Running in DEMO mode');
   }
   next();
 };
 
-// Middleware untuk error handling
 app.use((req, res, next) => {
   res.locals.demoMode = !firebaseInitialized;
   next();
 });
 
+// ========== HELPER FUNCTIONS ==========
+function getCurrentDateIndonesia() {
+  // Menggunakan timezone Indonesia (WIB)
+  const now = new Date();
+  const options = { timeZone: 'Asia/Jakarta' };
+  const indonesiaTime = new Date(now.toLocaleString('en-US', options));
+  return indonesiaTime;
+}
+
+function formatTanggal(date) {
+  return format(date, 'EEEE, dd MMMM yyyy', { locale: id });
+}
+
+function formatTanggalKey(date) {
+  return format(date, 'yyyy-MM-dd');
+}
+
 // ========== FUNGSI PREPARE TEMPLATE DATA ==========
-// FUNGSI PREPARE TEMPLATE DATA - FIXED LENGKAP
 function prepareTemplateData(laporan) {
-  // Header data
   const headerData = {
     sekolah: laporan.sekolah || SEKOLAH,
     guru: laporan.guru || GURU,
-    mataPelajaran: laporan.mataPelajaran || MATA_PELAJARAN,
+    mataPelajaran: laporan.mataPelajaran || '',
     tanggal: laporan.tanggal || '.........',
-    kelas: laporan.kelas || KELAS  // Tambahkan kelas untuk template
+    kelas: laporan.kelas || ''
   };
   
-  // Format data jadwal
   const jadwalData = [];
   if (laporan.jadwal && laporan.jadwal.length > 0) {
     laporan.jadwal.forEach((item) => {
       jadwalData.push({
         jamKe: item.jamKe || '...',
-        kelas: laporan.kelas || KELAS,
+        kelas: laporan.kelas || '',
         materi: item.materi || '.....................',
         metode: item.metode || '.....................',
         media: item.media || '..................',
@@ -176,7 +172,6 @@ function prepareTemplateData(laporan) {
     });
   }
   
-  // Format data kehadiran
   const kehadiranData = [];
   if (laporan.kehadiran && laporan.kehadiran.length > 0) {
     laporan.kehadiran.forEach((item, index) => {
@@ -190,7 +185,6 @@ function prepareTemplateData(laporan) {
     });
   }
   
-  // Format kendala - SELALU ADA MINIMAL 3 BARIS
   const kendalaData = [];
   if (laporan.kendala && laporan.kendala.trim() !== '') {
     const lines = laporan.kendala.split('\n').filter(line => line.trim());
@@ -199,21 +193,17 @@ function prepareTemplateData(laporan) {
     });
   }
   
-  // Tambahkan baris titik-titik sampai minimal 3 baris
   while (kendalaData.length < 3) {
     kendalaData.push({ text: '.....................................................................' });
   }
   
-  // Format tindak lanjut - SELALU ADA MINIMAL 2 BARIS
   const tindakLanjutData = [];
   if (laporan.tindakLanjut && laporan.tindakLanjut.length > 0) {
     laporan.tindakLanjut.forEach((item) => {
-      // Tambahkan jika ada data (tidak semua kosong)
       if (item.siswa && item.siswa.trim() !== '') {
-        // Gunakan jenis yang dipilih user, atau default ke "Remedial / Pengayaan"
         let jenisText = 'Remedial / Pengayaan';
         if (item.jenis && item.jenis.trim() !== '') {
-          jenisText = item.jenis.trim(); // "Remedial" atau "Pengayaan" saja
+          jenisText = item.jenis.trim();
         }
         
         tindakLanjutData.push({
@@ -226,7 +216,6 @@ function prepareTemplateData(laporan) {
     });
   }
   
-  // Tambahkan baris titik-titik sampai minimal 2 baris
   while (tindakLanjutData.length < 2) {
     tindakLanjutData.push({
       siswa: '...',
@@ -236,7 +225,6 @@ function prepareTemplateData(laporan) {
     });
   }
   
-  // Format catatan tambahan - SELALU ADA MINIMAL 2 BARIS
   const catatanData = [];
   if (laporan.catatanTambahan && laporan.catatanTambahan.trim() !== '') {
     const lines = laporan.catatanTambahan.split('\n').filter(line => line.trim());
@@ -245,16 +233,9 @@ function prepareTemplateData(laporan) {
     });
   }
   
-  // Tambahkan baris titik-titik sampai minimal 2 baris
   while (catatanData.length < 2) {
     catatanData.push({ text: '.....................................................................' });
   }
-  
-  console.log('=== DEBUG DATA ===');
-  console.log('Kendala:', kendalaData);
-  console.log('Tindak Lanjut:', tindakLanjutData);
-  console.log('Catatan:', catatanData);
-  console.log('==================');
   
   return {
     ...headerData,
@@ -271,30 +252,28 @@ function prepareTemplateData(laporan) {
 // Rute utama - Form Laporan
 app.get('/', checkDatabase, async (req, res) => {
   try {
-    let siswaList = [];
+    let kelasList = [];
     
     if (db && firebaseInitialized) {
-      const siswaSnapshot = await db.collection('siswa').orderBy('urutan', 'asc').get();
-      siswaList = siswaSnapshot.docs.map(doc => ({
+      const kelasSnapshot = await db.collection('kelas').orderBy('createdAt', 'asc').get();
+      kelasList = kelasSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
     } else {
-      // Data dummy untuk demo
-      siswaList = [
-        { id: '1', nama: 'SISWA DEMO 1', urutan: 1 },
-        { id: '2', nama: 'SISWA DEMO 2', urutan: 2 },
-        { id: '3', nama: 'SISWA DEMO 3', urutan: 3 }
+      kelasList = [
+        { id: 'demo1', namaKelas: 'XII TKJ 3', mataPelajaran: 'PKWU' }
       ];
     }
+    
+    const currentDate = getCurrentDateIndonesia();
     
     res.render('index', {
       sekolah: SEKOLAH,
       guru: GURU,
-      mataPelajaran: MATA_PELAJARAN,
-      kelas: KELAS,
-      tanggal: format(new Date(), 'EEEE, dd MMMM yyyy', { locale: id }),
-      siswaList: siswaList,
+      tanggal: formatTanggal(currentDate),
+      tanggalKey: formatTanggalKey(currentDate),
+      kelasList: kelasList,
       demoMode: !firebaseInitialized
     });
   } catch (error) {
@@ -306,25 +285,61 @@ app.get('/', checkDatabase, async (req, res) => {
   }
 });
 
-// Rute untuk halaman siswa
+// API: Get siswa by kelas
+app.get('/api/siswa/:kelasId', checkDatabase, async (req, res) => {
+  try {
+    const { kelasId } = req.params;
+    
+    if (!db || !firebaseInitialized) {
+      return res.json([]);
+    }
+    
+    const siswaSnapshot = await db.collection('siswa')
+      .where('kelasId', '==', kelasId)
+      .orderBy('urutan', 'asc')
+      .get();
+    
+    const siswaList = siswaSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    res.json(siswaList);
+  } catch (error) {
+    console.error('Error getting siswa:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ========== KELAS ROUTES ==========
+
+// Halaman Data Siswa & Kelas
 app.get('/siswa', checkDatabase, async (req, res) => {
   try {
-    let siswaList = [];
+    let kelasList = [];
     
     if (db && firebaseInitialized) {
-      const siswaSnapshot = await db.collection('siswa').orderBy('urutan', 'asc').get();
-      siswaList = siswaSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const kelasSnapshot = await db.collection('kelas').orderBy('createdAt', 'asc').get();
+      kelasList = kelasSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      // Get siswa count for each kelas
+      for (let kelas of kelasList) {
+        const siswaSnapshot = await db.collection('siswa')
+          .where('kelasId', '==', kelas.id)
+          .get();
+        kelas.jumlahSiswa = siswaSnapshot.size;
+      }
     } else {
-      // Data dummy untuk demo
-      siswaList = [
-        { id: 'demo1', nama: 'SISWA DEMO 1', urutan: 1, createdAt: new Date() },
-        { id: 'demo2', nama: 'SISWA DEMO 2', urutan: 2, createdAt: new Date() },
-        { id: 'demo3', nama: 'SISWA DEMO 3', urutan: 3, createdAt: new Date() }
+      kelasList = [
+        { id: 'demo1', namaKelas: 'XII TKJ 3', mataPelajaran: 'PKWU', jumlahSiswa: 3 }
       ];
     }
     
     res.render('siswa', { 
-      siswaList: siswaList,
+      kelasList: kelasList,
       demoMode: !firebaseInitialized
     });
   } catch (error) {
@@ -336,17 +351,174 @@ app.get('/siswa', checkDatabase, async (req, res) => {
   }
 });
 
-// Rute untuk menambahkan siswa
+// Tambah Kelas
+app.post('/kelas/tambah', checkDatabase, async (req, res) => {
+  try {
+    const { namaKelas, mataPelajaran } = req.body;
+    
+    if (!namaKelas || !mataPelajaran) {
+      return res.status(400).send('Nama kelas dan mata pelajaran diperlukan');
+    }
+    
+    if (db && firebaseInitialized) {
+      await db.collection('kelas').add({
+        namaKelas: namaKelas.trim(),
+        mataPelajaran: mataPelajaran.trim(),
+        createdAt: new Date()
+      });
+      
+      res.redirect('/siswa');
+    } else {
+      res.render('message', {
+        title: 'Demo Mode',
+        message: 'Fitur ini tidak tersedia dalam mode demo.',
+        redirectUrl: '/siswa',
+        demoMode: true
+      });
+    }
+  } catch (error) {
+    console.error('Error in /kelas/tambah:', error);
+    res.status(500).render('error', { 
+      message: 'Error: ' + error.message,
+      demoMode: !firebaseInitialized
+    });
+  }
+});
+
+// Edit Kelas
+app.post('/kelas/edit/:id', checkDatabase, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { namaKelas, mataPelajaran } = req.body;
+    
+    if (!namaKelas || !mataPelajaran) {
+      return res.status(400).send('Nama kelas dan mata pelajaran diperlukan');
+    }
+    
+    if (db && firebaseInitialized) {
+      await db.collection('kelas').doc(id).update({
+        namaKelas: namaKelas.trim(),
+        mataPelajaran: mataPelajaran.trim(),
+        updatedAt: new Date()
+      });
+      
+      res.redirect('/siswa');
+    } else {
+      res.render('message', {
+        title: 'Demo Mode',
+        message: 'Fitur edit tidak tersedia dalam mode demo.',
+        redirectUrl: '/siswa',
+        demoMode: true
+      });
+    }
+  } catch (error) {
+    console.error('Error in /kelas/edit:', error);
+    res.status(500).render('error', { 
+      message: 'Error: ' + error.message,
+      demoMode: !firebaseInitialized
+    });
+  }
+});
+
+// Hapus Kelas
+app.post('/kelas/hapus/:id', checkDatabase, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (db && firebaseInitialized) {
+      // Hapus semua siswa di kelas ini juga
+      const siswaSnapshot = await db.collection('siswa')
+        .where('kelasId', '==', id)
+        .get();
+      
+      const batch = db.batch();
+      siswaSnapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+      
+      batch.delete(db.collection('kelas').doc(id));
+      await batch.commit();
+      
+      res.redirect('/siswa');
+    } else {
+      res.render('message', {
+        title: 'Demo Mode',
+        message: 'Fitur hapus tidak tersedia dalam mode demo.',
+        redirectUrl: '/siswa',
+        demoMode: true
+      });
+    }
+  } catch (error) {
+    console.error('Error in /kelas/hapus:', error);
+    res.status(500).render('error', { 
+      message: 'Error: ' + error.message,
+      demoMode: !firebaseInitialized
+    });
+  }
+});
+
+// ========== SISWA ROUTES ==========
+
+// Detail Kelas & Siswa
+app.get('/siswa/kelas/:kelasId', checkDatabase, async (req, res) => {
+  try {
+    const { kelasId } = req.params;
+    
+    if (!db || !firebaseInitialized) {
+      return res.render('message', {
+        title: 'Demo Mode',
+        message: 'Fitur ini tidak tersedia dalam mode demo.',
+        redirectUrl: '/siswa',
+        demoMode: true
+      });
+    }
+    
+    const kelasDoc = await db.collection('kelas').doc(kelasId).get();
+    if (!kelasDoc.exists) {
+      return res.status(404).render('error', {
+        message: 'Kelas tidak ditemukan',
+        demoMode: !firebaseInitialized
+      });
+    }
+    
+    const kelas = { id: kelasDoc.id, ...kelasDoc.data() };
+    
+    const siswaSnapshot = await db.collection('siswa')
+      .where('kelasId', '==', kelasId)
+      .orderBy('urutan', 'asc')
+      .get();
+    
+    const siswaList = siswaSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    res.render('siswa-detail', {
+      kelas: kelas,
+      siswaList: siswaList,
+      demoMode: !firebaseInitialized
+    });
+  } catch (error) {
+    console.error('Error in /siswa/kelas:', error);
+    res.status(500).render('error', { 
+      message: 'Error: ' + error.message,
+      demoMode: !firebaseInitialized
+    });
+  }
+});
+
+// Tambah Siswa
 app.post('/siswa/tambah', checkDatabase, async (req, res) => {
   try {
-    const { nama } = req.body;
+    const { nama, kelasId } = req.body;
     
-    if (!nama) {
-      return res.status(400).send('Nama siswa diperlukan');
+    if (!nama || !kelasId) {
+      return res.status(400).send('Nama siswa dan kelas diperlukan');
     }
     
     if (db && firebaseInitialized) {
       const lastSiswa = await db.collection('siswa')
+        .where('kelasId', '==', kelasId)
         .orderBy('urutan', 'desc')
         .limit(1)
         .get();
@@ -359,22 +531,22 @@ app.post('/siswa/tambah', checkDatabase, async (req, res) => {
       
       await db.collection('siswa').add({
         nama: nama.trim(),
+        kelasId: kelasId,
         createdAt: new Date(),
         urutan: urutan
       });
       
-      res.redirect('/siswa');
+      res.redirect('/siswa/kelas/' + kelasId);
     } else {
-      // Demo mode - tampilkan pesan
       res.render('message', {
         title: 'Demo Mode',
-        message: 'Fitur ini tidak tersedia dalam mode demo. Database Firebase belum dikonfigurasi.',
+        message: 'Fitur ini tidak tersedia dalam mode demo.',
         redirectUrl: '/siswa',
         demoMode: true
       });
     }
   } catch (error) {
-    console.error('Error in /siswa/tambah route:', error);
+    console.error('Error in /siswa/tambah:', error);
     res.status(500).render('error', { 
       message: 'Error: ' + error.message,
       demoMode: !firebaseInitialized
@@ -382,9 +554,105 @@ app.post('/siswa/tambah', checkDatabase, async (req, res) => {
   }
 });
 
-// Upload siswa
+// Edit Siswa
+app.post('/siswa/edit/:id', checkDatabase, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nama, kelasId } = req.body;
+    
+    if (!nama) {
+      return res.status(400).send('Nama siswa diperlukan');
+    }
+    
+    if (db && firebaseInitialized) {
+      await db.collection('siswa').doc(id).update({
+        nama: nama.trim(),
+        updatedAt: new Date()
+      });
+      
+      res.redirect('/siswa/kelas/' + kelasId);
+    } else {
+      res.render('message', {
+        title: 'Demo Mode',
+        message: 'Fitur edit tidak tersedia dalam mode demo.',
+        redirectUrl: '/siswa',
+        demoMode: true
+      });
+    }
+  } catch (error) {
+    console.error('Error in /siswa/edit:', error);
+    res.status(500).render('error', { 
+      message: 'Error: ' + error.message,
+      demoMode: !firebaseInitialized
+    });
+  }
+});
+
+// Hapus Siswa
+app.post('/siswa/hapus/:id', checkDatabase, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { kelasId } = req.body;
+    
+    if (db && firebaseInitialized) {
+      await db.collection('siswa').doc(id).delete();
+      res.redirect('/siswa/kelas/' + kelasId);
+    } else {
+      res.render('message', {
+        title: 'Demo Mode',
+        message: 'Fitur hapus tidak tersedia dalam mode demo.',
+        redirectUrl: '/siswa',
+        demoMode: true
+      });
+    }
+  } catch (error) {
+    console.error('Error in /siswa/hapus:', error);
+    res.status(500).render('error', { 
+      message: 'Error: ' + error.message,
+      demoMode: !firebaseInitialized
+    });
+  }
+});
+
+// Hapus Semua Siswa dalam Kelas
+app.post('/siswa/hapus-semua/:kelasId', checkDatabase, async (req, res) => {
+  try {
+    const { kelasId } = req.params;
+    
+    if (db && firebaseInitialized) {
+      const siswaSnapshot = await db.collection('siswa')
+        .where('kelasId', '==', kelasId)
+        .get();
+      
+      const batch = db.batch();
+      siswaSnapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+      
+      await batch.commit();
+      res.redirect('/siswa/kelas/' + kelasId);
+    } else {
+      res.render('message', {
+        title: 'Demo Mode',
+        message: 'Fitur hapus tidak tersedia dalam mode demo.',
+        redirectUrl: '/siswa',
+        demoMode: true
+      });
+    }
+  } catch (error) {
+    console.error('Error in /siswa/hapus-semua:', error);
+    res.status(500).render('error', { 
+      message: 'Error: ' + error.message,
+      demoMode: !firebaseInitialized
+    });
+  }
+});
+
+// Upload Siswa
 app.post('/siswa/upload', checkDatabase, upload.single('fileSiswa'), async (req, res) => {
   try {
+    const { kelasId } = req.body;
+    
     if (!req.file) {
       return res.status(400).render('error', { 
         message: 'File tidak ditemukan',
@@ -398,7 +666,6 @@ app.post('/siswa/upload', checkDatabase, upload.single('fileSiswa'), async (req,
       .map(line => line.trim())
       .filter(line => line !== '');
     
-    // Hapus file temp
     try {
       fs.unlinkSync(filePath);
     } catch (unlinkError) {
@@ -414,6 +681,7 @@ app.post('/siswa/upload', checkDatabase, upload.single('fileSiswa'), async (req,
     
     if (db && firebaseInitialized) {
       const lastSiswa = await db.collection('siswa')
+        .where('kelasId', '==', kelasId)
         .orderBy('urutan', 'desc')
         .limit(1)
         .get();
@@ -431,15 +699,15 @@ app.post('/siswa/upload', checkDatabase, upload.single('fileSiswa'), async (req,
         const docRef = db.collection('siswa').doc();
         batch.set(docRef, {
           nama: nama,
+          kelasId: kelasId,
           createdAt: new Date(timestamp.getTime() + (index * 1000)),
           urutan: startUrutan + index
         });
       });
       
       await batch.commit();
-      res.redirect('/siswa');
+      res.redirect('/siswa/kelas/' + kelasId);
     } else {
-      // Demo mode
       res.render('message', {
         title: 'Demo Mode',
         message: `File berhasil dibaca (${namaSiswa.length} siswa). Database Firebase belum dikonfigurasi.`,
@@ -448,7 +716,7 @@ app.post('/siswa/upload', checkDatabase, upload.single('fileSiswa'), async (req,
       });
     }
   } catch (error) {
-    console.error('Error in /siswa/upload route:', error);
+    console.error('Error in /siswa/upload:', error);
     res.status(500).render('error', { 
       message: 'Error: ' + error.message,
       demoMode: !firebaseInitialized
@@ -456,36 +724,238 @@ app.post('/siswa/upload', checkDatabase, upload.single('fileSiswa'), async (req,
   }
 });
 
-// ========== ROUTE BARU: HAPUS SISWA ==========
-app.post('/siswa/hapus/:id', checkDatabase, async (req, res) => {
+// ========== REKAP ABSENSI SISWA ==========
+app.get('/siswa/rekap/:siswaId', checkDatabase, async (req, res) => {
   try {
-    const { id } = req.params;
+    const { siswaId } = req.params;
     
-    if (db && firebaseInitialized) {
-      await db.collection('siswa').doc(id).delete();
-      res.redirect('/siswa');
-    } else {
-      res.render('message', {
+    if (!db || !firebaseInitialized) {
+      return res.render('message', {
         title: 'Demo Mode',
-        message: 'Fitur hapus tidak tersedia dalam mode demo.',
+        message: 'Fitur rekap tidak tersedia dalam mode demo.',
         redirectUrl: '/siswa',
         demoMode: true
       });
     }
+    
+    // Get siswa data
+    const siswaDoc = await db.collection('siswa').doc(siswaId).get();
+    if (!siswaDoc.exists) {
+      return res.status(404).render('error', {
+        message: 'Siswa tidak ditemukan',
+        demoMode: !firebaseInitialized
+      });
+    }
+    
+    const siswa = { id: siswaDoc.id, ...siswaDoc.data() };
+    
+    // Get kelas data
+    const kelasDoc = await db.collection('kelas').doc(siswa.kelasId).get();
+    const kelas = kelasDoc.exists ? kelasDoc.data() : {};
+    
+    // Get all laporan that contains this siswa
+    const laporanSnapshot = await db.collection('laporan')
+      .where('kelas', '==', kelas.namaKelas)
+      .orderBy('tanggalKey', 'asc')
+      .get();
+    
+    const absensiData = [];
+    let countHadir = 0;
+    let countSakit = 0;
+    let countIzin = 0;
+    
+    laporanSnapshot.docs.forEach(doc => {
+      const laporan = doc.data();
+      if (laporan.kehadiran && Array.isArray(laporan.kehadiran)) {
+        const kehadiranSiswa = laporan.kehadiran.find(k => k.siswaNama === siswa.nama);
+        if (kehadiranSiswa) {
+          absensiData.push({
+            tanggal: laporan.tanggal,
+            tanggalKey: laporan.tanggalKey,
+            status: kehadiranSiswa.status,
+            partisipasi: kehadiranSiswa.partisipasi,
+            catatan: kehadiranSiswa.catatan
+          });
+          
+          if (kehadiranSiswa.status === 'H') countHadir++;
+          else if (kehadiranSiswa.status === 'S') countSakit++;
+          else if (kehadiranSiswa.status === 'I') countIzin++;
+        }
+      }
+    });
+    
+    // Create Excel file
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Rekap Absensi');
+    
+    // Set column widths
+    worksheet.columns = [
+      { key: 'no', width: 5 },
+      { key: 'tanggal', width: 25 },
+      { key: 'status', width: 10 },
+      { key: 'partisipasi', width: 15 },
+      { key: 'catatan', width: 40 }
+    ];
+    
+    // Title
+    worksheet.mergeCells('A1:E1');
+    const titleRow = worksheet.getCell('A1');
+    titleRow.value = 'REKAP ABSENSI SISWA';
+    titleRow.font = { size: 16, bold: true };
+    titleRow.alignment = { horizontal: 'center', vertical: 'middle' };
+    
+    // Info Siswa
+    worksheet.mergeCells('A3:B3');
+    worksheet.getCell('A3').value = 'Nama Siswa';
+    worksheet.getCell('A3').font = { bold: true };
+    worksheet.mergeCells('C3:E3');
+    worksheet.getCell('C3').value = siswa.nama;
+    
+    worksheet.mergeCells('A4:B4');
+    worksheet.getCell('A4').value = 'Kelas';
+    worksheet.getCell('A4').font = { bold: true };
+    worksheet.mergeCells('C4:E4');
+    worksheet.getCell('C4').value = kelas.namaKelas || '';
+    
+    worksheet.mergeCells('A5:B5');
+    worksheet.getCell('A5').value = 'Mata Pelajaran';
+    worksheet.getCell('A5').font = { bold: true };
+    worksheet.mergeCells('C5:E5');
+    worksheet.getCell('C5').value = kelas.mataPelajaran || '';
+    
+    // Header tabel
+    const headerRow = worksheet.getRow(7);
+    headerRow.values = ['No', 'Tanggal', 'Status', 'Partisipasi', 'Catatan'];
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF4472C4' }
+    };
+    headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+    
+    // Data rows
+    absensiData.forEach((item, index) => {
+      const row = worksheet.addRow({
+        no: index + 1,
+        tanggal: item.tanggal,
+        status: item.status,
+        partisipasi: item.partisipasi,
+        catatan: item.catatan
+      });
+      
+      // Styling berdasarkan status
+      const statusCell = row.getCell('status');
+      if (item.status === 'H') {
+        statusCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FF92D050' }
+        };
+      } else if (item.status === 'S') {
+        statusCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFC000' }
+        };
+      } else if (item.status === 'I') {
+        statusCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FF00B0F0' }
+        };
+      }
+      
+      row.alignment = { vertical: 'middle' };
+    });
+    
+    // Ringkasan
+    const summaryStartRow = worksheet.lastRow.number + 3;
+    
+    worksheet.mergeCells(`A${summaryStartRow}:B${summaryStartRow}`);
+    worksheet.getCell(`A${summaryStartRow}`).value = 'RINGKASAN KEHADIRAN';
+    worksheet.getCell(`A${summaryStartRow}`).font = { bold: true, size: 12 };
+    
+    worksheet.getCell(`A${summaryStartRow + 1}`).value = 'Hadir (H)';
+    worksheet.getCell(`A${summaryStartRow + 1}`).font = { bold: true };
+    worksheet.getCell(`B${summaryStartRow + 1}`).value = countHadir;
+    worksheet.getCell(`B${summaryStartRow + 1}`).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF92D050' }
+    };
+    
+    worksheet.getCell(`A${summaryStartRow + 2}`).value = 'Sakit (S)';
+    worksheet.getCell(`A${summaryStartRow + 2}`).font = { bold: true };
+    worksheet.getCell(`B${summaryStartRow + 2}`).value = countSakit;
+    worksheet.getCell(`B${summaryStartRow + 2}`).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFFFC000' }
+    };
+    
+    worksheet.getCell(`A${summaryStartRow + 3}`).value = 'Izin (I)';
+    worksheet.getCell(`A${summaryStartRow + 3}`).font = { bold: true };
+    worksheet.getCell(`B${summaryStartRow + 3}`).value = countIzin;
+    worksheet.getCell(`B${summaryStartRow + 3}`).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF00B0F0' }
+    };
+    
+    worksheet.getCell(`A${summaryStartRow + 4}`).value = 'TOTAL';
+    worksheet.getCell(`A${summaryStartRow + 4}`).font = { bold: true };
+    worksheet.getCell(`B${summaryStartRow + 4}`).value = absensiData.length;
+    worksheet.getCell(`B${summaryStartRow + 4}`).font = { bold: true };
+    
+    // Add borders to all cells with data
+    worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      if (rowNumber >= 7) {
+        row.eachCell({ includeEmpty: true }, (cell) => {
+          cell.border = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+          };
+        });
+      }
+    });
+    
+    // Generate file
+    const fileName = `Rekap_Absensi_${siswa.nama.replace(/\s+/g, '_')}_${Date.now()}.xlsx`;
+    const filePath = path.join(process.env.VERCEL ? '/tmp' : __dirname, fileName);
+    
+    await workbook.xlsx.writeFile(filePath);
+    
+    // Send file
+    res.download(filePath, fileName, (err) => {
+      if (err) {
+        console.error('Error sending file:', err);
+      }
+      // Clean up
+      try {
+        fs.unlinkSync(filePath);
+      } catch (unlinkError) {
+        console.warn('Cannot delete temp file:', unlinkError);
+      }
+    });
+    
   } catch (error) {
-    console.error('Error in /siswa/hapus route:', error);
+    console.error('Error in /siswa/rekap:', error);
     res.status(500).render('error', { 
       message: 'Error: ' + error.message,
       demoMode: !firebaseInitialized
     });
   }
 });
+
+// ========== LAPORAN ROUTES ==========
 
 // Simpan laporan harian
 app.post('/simpan-laporan', checkDatabase, async (req, res) => {
   try {
     const data = req.body;
-    const tanggal = data.tanggal || format(new Date(), 'yyyy-MM-dd');
     
     const jadwal = [];
     if (data.jamKe && Array.isArray(data.jamKe)) {
@@ -528,10 +998,10 @@ app.post('/simpan-laporan', checkDatabase, async (req, res) => {
     const laporanData = {
       sekolah: SEKOLAH,
       guru: GURU,
-      mataPelajaran: MATA_PELAJARAN,
-      kelas: KELAS,
-      tanggal: data.tanggalDisplay || format(new Date(), 'EEEE, dd MMMM yyyy', { locale: id }),
-      tanggalKey: tanggal,
+      mataPelajaran: data.mataPelajaran || '',
+      kelas: data.kelas || '',
+      tanggal: data.tanggalDisplay || '',
+      tanggalKey: data.tanggalKey || formatTanggalKey(getCurrentDateIndonesia()),
       jadwal: jadwal,
       kendala: data.kendala || '',
       tindakLanjut: tindakLanjut,
@@ -548,7 +1018,6 @@ app.post('/simpan-laporan', checkDatabase, async (req, res) => {
         id: docRef.id
       });
     } else {
-      // Demo mode - simpan ke file temporary
       const demoId = 'demo-' + Date.now();
       res.json({ 
         success: true, 
@@ -575,7 +1044,7 @@ app.get('/rekap', checkDatabase, async (req, res) => {
     if (db && firebaseInitialized) {
       const laporanSnapshot = await db.collection('laporan')
         .orderBy('createdAt', 'desc')
-        .limit(50) // Batasi untuk performance
+        .limit(50)
         .get();
       
       laporanList = laporanSnapshot.docs.map(doc => ({
@@ -583,13 +1052,12 @@ app.get('/rekap', checkDatabase, async (req, res) => {
         ...doc.data()
       }));
     } else {
-      // Data dummy untuk demo
       laporanList = [
         {
           id: 'demo1',
           tanggal: 'Senin, 01 Januari 2024',
           tanggalKey: '2024-01-01',
-          kelas: KELAS,
+          kelas: 'XII TKJ 3',
           jadwal: [{ jamKe: '1-2', materi: 'Demo Materi' }],
           kehadiran: [{ siswaNama: 'Siswa Demo', status: 'H' }],
           createdAt: new Date()
@@ -610,7 +1078,7 @@ app.get('/rekap', checkDatabase, async (req, res) => {
   }
 });
 
-// ========== ROUTE BARU: EDIT LAPORAN (GET) ==========
+// Edit Laporan (GET)
 app.get('/rekap/edit/:id', checkDatabase, async (req, res) => {
   try {
     const { id } = req.params;
@@ -635,8 +1103,23 @@ app.get('/rekap/edit/:id', checkDatabase, async (req, res) => {
     
     const laporan = laporanDoc.data();
     
-    // Get all siswa
-    const siswaSnapshot = await db.collection('siswa').orderBy('urutan', 'asc').get();
+    // Get kelas for this laporan
+    const kelasSnapshot = await db.collection('kelas')
+      .where('namaKelas', '==', laporan.kelas)
+      .limit(1)
+      .get();
+    
+    let kelasId = null;
+    if (!kelasSnapshot.empty) {
+      kelasId = kelasSnapshot.docs[0].id;
+    }
+    
+    // Get all siswa for this kelas
+    const siswaSnapshot = await db.collection('siswa')
+      .where('kelasId', '==', kelasId)
+      .orderBy('urutan', 'asc')
+      .get();
+    
     const siswaList = siswaSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     
     // Merge siswa with kehadiran data
@@ -656,8 +1139,6 @@ app.get('/rekap/edit/:id', checkDatabase, async (req, res) => {
       laporan: laporan,
       sekolah: SEKOLAH,
       guru: GURU,
-      mataPelajaran: MATA_PELAJARAN,
-      kelas: KELAS,
       kehadiranDenganSiswa: kehadiranDenganSiswa,
       demoMode: !firebaseInitialized
     });
@@ -670,7 +1151,81 @@ app.get('/rekap/edit/:id', checkDatabase, async (req, res) => {
   }
 });
 
-// ========== ROUTE BARU: HAPUS LAPORAN (POST) ==========
+// Update Laporan (POST)
+app.post('/rekap/update/:id', checkDatabase, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const data = req.body;
+    
+    if (!db || !firebaseInitialized) {
+      return res.render('message', {
+        title: 'Demo Mode',
+        message: 'Fitur update tidak tersedia dalam mode demo.',
+        redirectUrl: '/rekap',
+        demoMode: true
+      });
+    }
+    
+    const jadwal = [];
+    if (data.jamKe && Array.isArray(data.jamKe)) {
+      for (let i = 0; i < data.jamKe.length; i++) {
+        jadwal.push({
+          jamKe: data.jamKe[i],
+          materi: data.materi ? data.materi[i] : '',
+          metode: data.metode ? data.metode[i] : '',
+          media: data.media ? data.media[i] : '',
+          catatan: data.catatanJadwal ? data.catatanJadwal[i] : ''
+        });
+      }
+    }
+    
+    const kehadiran = [];
+    if (data.siswaId && Array.isArray(data.siswaId)) {
+      for (let i = 0; i < data.siswaId.length; i++) {
+        kehadiran.push({
+          siswaId: data.siswaId[i],
+          siswaNama: data.siswaNama ? data.siswaNama[i] : '',
+          status: data.kehadiran ? data.kehadiran[i] : 'H',
+          partisipasi: data.partisipasi ? data.partisipasi[i] : 'Aktif',
+          catatan: data.catatanSiswa ? data.catatanSiswa[i] : ''
+        });
+      }
+    }
+    
+    const tindakLanjut = [];
+    if (data.tlSiswa && Array.isArray(data.tlSiswa)) {
+      for (let i = 0; i < data.tlSiswa.length; i++) {
+        tindakLanjut.push({
+          siswa: data.tlSiswa[i],
+          jenis: data.tlJenis ? data.tlJenis[i] : '',
+          waktu: data.tlWaktu ? data.tlWaktu[i] : '',
+          catatan: data.tlCatatan ? data.tlCatatan[i] : ''
+        });
+      }
+    }
+    
+    const updateData = {
+      jadwal: jadwal,
+      kendala: data.kendala || '',
+      tindakLanjut: tindakLanjut,
+      catatanTambahan: data.catatanTambahan || '',
+      kehadiran: kehadiran,
+      updatedAt: new Date()
+    };
+    
+    await db.collection('laporan').doc(id).update(updateData);
+    res.redirect('/rekap');
+    
+  } catch (error) {
+    console.error('Error in /rekap/update route:', error);
+    res.status(500).render('error', { 
+      message: 'Error: ' + error.message,
+      demoMode: !firebaseInitialized
+    });
+  }
+});
+
+// Hapus Laporan (POST)
 app.post('/rekap/hapus/:id', checkDatabase, async (req, res) => {
   try {
     const { id } = req.params;
@@ -695,7 +1250,7 @@ app.post('/rekap/hapus/:id', checkDatabase, async (req, res) => {
   }
 });
 
-// ========== ROUTE BARU: EKSPOR KE DOCX (GET) ==========
+// Ekspor ke DOCX (GET)
 app.get('/ekspor/:id', checkDatabase, async (req, res) => {
   try {
     const { id } = req.params;
@@ -720,10 +1275,8 @@ app.get('/ekspor/:id', checkDatabase, async (req, res) => {
     
     const laporan = laporanDoc.data();
     
-    // Path ke template DOCX
     const templatePath = path.join(__dirname, 'templates', 'LAPORAN HERMAWAN.docx');
     
-    // Cek apakah template ada
     if (!fs.existsSync(templatePath)) {
       return res.status(500).render('error', {
         message: 'Template DOCX tidak ditemukan. Pastikan file "LAPORAN HERMAWAN.docx" ada di folder templates/',
@@ -731,7 +1284,6 @@ app.get('/ekspor/:id', checkDatabase, async (req, res) => {
       });
     }
     
-    // Baca template
     const content = fs.readFileSync(templatePath, 'binary');
     const zip = new PizZip(content);
     
@@ -749,14 +1301,8 @@ app.get('/ekspor/:id', checkDatabase, async (req, res) => {
       });
     }
     
-    // Siapkan data untuk template
     const templateData = prepareTemplateData(laporan);
     
-    console.log('=== TEMPLATE DATA ===');
-    console.log(JSON.stringify(templateData, null, 2));
-    console.log('===================');
-    
-    // Set data ke template
     try {
       docxTemplate.setData(templateData);
       docxTemplate.render();
@@ -771,13 +1317,11 @@ app.get('/ekspor/:id', checkDatabase, async (req, res) => {
       });
     }
     
-    // Generate buffer
     const buffer = docxTemplate.getZip().generate({
       type: 'nodebuffer',
       compression: 'DEFLATE'
     });
     
-    // Kirim sebagai file download
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader('Content-Disposition', `attachment; filename="Laporan_Harian_${laporan.tanggalKey || 'laporan'}.docx"`);
     res.send(buffer);
@@ -791,7 +1335,7 @@ app.get('/ekspor/:id', checkDatabase, async (req, res) => {
   }
 });
 
-// Debug route untuk cek environment
+// Debug route
 app.get('/debug', (req, res) => {
   res.json({
     nodeEnv: process.env.NODE_ENV,
@@ -801,7 +1345,8 @@ app.get('/debug', (req, res) => {
     firebaseClientEmail: process.env.FIREBASE_CLIENT_EMAIL ? 'Set' : 'Not set',
     firebasePrivateKey: process.env.FIREBASE_PRIVATE_KEY ? `Set (length: ${process.env.FIREBASE_PRIVATE_KEY.length})` : 'Not set',
     port: process.env.PORT,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    indonesiaTime: getCurrentDateIndonesia().toISOString()
   });
 });
 

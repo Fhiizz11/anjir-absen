@@ -8,181 +8,372 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
     <style>
         body {
-            background-color: #f8f9fa;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding-bottom: 50px;
         }
         .header {
-            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
             color: white;
-            padding: 2rem 0;
+            padding: 2.5rem 0;
             margin-bottom: 2rem;
-            border-radius: 0 0 20px 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-radius: 0 0 30px 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
         }
-        .card {
-            border-radius: 15px;
-            border: none;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
-            margin-bottom: 20px;
-            transition: transform 0.3s;
+        .header h1 {
+            font-weight: 700;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
         }
-        .card:hover {
-            transform: translateY(-5px);
+        .header .lead {
+            opacity: 0.95;
+            font-weight: 500;
         }
         .nav-link {
-            color: #495057;
-            font-weight: 500;
-            padding: 10px 20px;
-            border-radius: 10px;
-            margin: 0 5px;
+            color: white;
+            font-weight: 600;
+            padding: 12px 24px;
+            border-radius: 15px;
+            margin: 0 8px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+            border: 2px solid transparent;
         }
-        .nav-link:hover, .nav-link.active {
+        .nav-link:hover {
+            background: rgba(255, 255, 255, 0.25);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .nav-link.active {
+            background: white;
+            color: #667eea;
+            font-weight: 700;
+            border-color: white;
+            box-shadow: 0 5px 20px rgba(255,255,255,0.3);
+        }
+        .stat-card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+            border: 3px solid transparent;
+        }
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 6px;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        }
+        .stat-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.25);
+            border-color: #667eea;
+        }
+        .stat-number {
+            font-size: 3.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+        .stat-label {
+            font-size: 1rem;
+            color: #6c757d;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .stat-icon {
+            font-size: 2rem;
+            color: #667eea;
+            opacity: 0.3;
+            position: absolute;
+            right: 20px;
+            top: 20px;
+        }
+        .main-card {
+            background: white;
+            border-radius: 25px;
+            box-shadow: 0 15px 50px rgba(0,0,0,0.2);
+            overflow: hidden;
+            border: none;
+        }
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem 2rem;
+            border: none;
+            font-weight: 700;
+            font-size: 1.2rem;
+        }
+        .laporan-card {
+            background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%);
+            border-radius: 18px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+            border-left: 6px solid #667eea;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+        .laporan-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 100px;
+            height: 100px;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+            border-radius: 0 0 0 100%;
+        }
+        .laporan-card:hover {
+            transform: translateX(10px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+            border-left-width: 8px;
+        }
+        .laporan-date {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #2d3748;
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+        }
+        .laporan-date i {
+            margin-right: 10px;
+            color: #667eea;
+        }
+        .laporan-kelas {
+            color: #718096;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+        .badge {
+            padding: 8px 15px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+        .badge-info-custom {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+        .badge-success-custom {
             background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
             color: white;
         }
-        .badge {
-            padding: 8px 12px;
-            border-radius: 20px;
-            font-weight: 500;
+        .badge-warning-custom {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            color: white;
         }
-        .laporan-card {
-            border-left: 5px solid #43e97b;
-            padding: 20px;
-            margin-bottom: 15px;
-            background: white;
-            border-radius: 10px;
+        .btn-action {
+            padding: 10px 20px;
+            border-radius: 12px;
+            font-weight: 600;
+            border: none;
             transition: all 0.3s;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+            margin: 0 5px;
         }
-        .laporan-card:hover {
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
-        .btn-group-sm .btn {
-            border-radius: 10px;
-            margin: 0 2px;
+        .btn-action:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
         }
         .btn-edit {
             background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            border: none;
+            color: white;
+        }
+        .btn-edit:hover {
+            background: linear-gradient(135deg, #3d9beb 0%, #00d9e6 100%);
             color: white;
         }
         .btn-ekspor {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
+            color: white;
+        }
+        .btn-ekspor:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4090 100%);
             color: white;
         }
         .btn-hapus {
             background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            border: none;
             color: white;
         }
-        .stat-card {
-            text-align: center;
-            padding: 20px;
-            border-radius: 15px;
+        .btn-hapus:hover {
+            background: linear-gradient(135deg, #e082ea 0%, #e4465b 100%);
             color: white;
-            margin-bottom: 20px;
         }
-        .stat-card-1 {
+        .btn-primary-custom {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            padding: 12px 30px;
+            border-radius: 15px;
+            font-weight: 700;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
         }
-        .stat-card-2 {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        .btn-primary-custom:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
         }
-        .stat-card-3 {
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        .empty-state {
+            text-align: center;
+            padding: 80px 20px;
         }
-        .stat-number {
-            font-size: 2.5rem;
-            font-weight: bold;
+        .empty-state i {
+            font-size: 6rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            opacity: 0.5;
         }
-        .stat-label {
-            font-size: 0.9rem;
-            opacity: 0.9;
+        .empty-state h4 {
+            color: #4a5568;
+            font-weight: 700;
+            margin-top: 20px;
+        }
+        .kendala-badge {
+            display: inline-flex;
+            align-items: center;
+            background: #fff3cd;
+            color: #856404;
+            padding: 6px 12px;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            margin-top: 8px;
+        }
+        .kendala-badge i {
+            margin-right: 6px;
+        }
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .laporan-card {
+            animation: fadeInUp 0.5s ease-out;
         }
     </style>
 </head>
 <body>
     <div class="header text-center">
         <div class="container">
-            <h1><i class="bi bi-folder me-2"></i>REKAP LAPORAN HARIAN</h1>
+            <h1><i class="bi bi-folder-open me-3"></i>REKAP LAPORAN HARIAN</h1>
             <p class="lead">Arsip dan Manajemen Laporan Mengajar</p>
         </div>
     </div>
 
     <div class="container">
-        <nav class="nav nav-pills justify-content-center mb-4">
+        <nav class="nav nav-pills justify-content-center mb-5">
             <a class="nav-link" href="/"><i class="bi bi-house-door me-2"></i>Form Laporan</a>
             <a class="nav-link" href="/siswa"><i class="bi bi-people me-2"></i>Data Siswa</a>
             <a class="nav-link active" href="/rekap"><i class="bi bi-folder me-2"></i>Rekap Laporan</a>
         </nav>
 
         <!-- Statistik -->
-        <div class="row mb-4">
-            <div class="col-md-4">
-                <div class="stat-card stat-card-1">
+        <div class="row mb-5">
+            <div class="col-md-4 mb-3">
+                <div class="stat-card">
+                    <i class="bi bi-journal-text stat-icon"></i>
                     <div class="stat-number"><%= laporanList.length %></div>
-                    <div class="stat-label"><i class="bi bi-journal-text me-1"></i>Total Laporan</div>
+                    <div class="stat-label"><i class="bi bi-files me-2"></i>Total Laporan</div>
                 </div>
             </div>
-            <div class="col-md-4">
-                <div class="stat-card stat-card-2">
+            <div class="col-md-4 mb-3">
+                <div class="stat-card">
+                    <i class="bi bi-calendar-check stat-icon"></i>
                     <% 
-                        const today = new Date().toISOString().split('T')[0];
-                        const todayReports = laporanList.filter(r => r.tanggalKey === today).length;
+                        // Gunakan timezone Indonesia (WIB)
+                        const now = new Date();
+                        const wibOffset = 7 * 60; // WIB is UTC+7
+                        const wibTime = new Date(now.getTime() + (wibOffset - now.getTimezoneOffset()) * 60000);
+                        const todayWIB = wibTime.toISOString().split('T')[0];
+                        const todayReports = laporanList.filter(r => r.tanggalKey === todayWIB).length;
                     %>
                     <div class="stat-number"><%= todayReports %></div>
-                    <div class="stat-label"><i class="bi bi-calendar-check me-1"></i>Laporan Hari Ini</div>
+                    <div class="stat-label"><i class="bi bi-sun me-2"></i>Laporan Hari Ini</div>
                 </div>
             </div>
-            <div class="col-md-4">
-                <div class="stat-card stat-card-3">
+            <div class="col-md-4 mb-3">
+                <div class="stat-card">
+                    <i class="bi bi-calendar-month stat-icon"></i>
                     <% 
-                        const lastMonth = new Date();
-                        lastMonth.setMonth(lastMonth.getMonth() - 1);
-                        const lastMonthReports = laporanList.filter(r => new Date(r.tanggalKey) >= lastMonth).length;
+                        const lastMonth = new Date(wibTime);
+                        lastMonth.setDate(lastMonth.getDate() - 30);
+                        const lastMonthKey = lastMonth.toISOString().split('T')[0];
+                        const lastMonthReports = laporanList.filter(r => r.tanggalKey >= lastMonthKey).length;
                     %>
                     <div class="stat-number"><%= lastMonthReports %></div>
-                    <div class="stat-label"><i class="bi bi-calendar-month me-1"></i>30 Hari Terakhir</div>
+                    <div class="stat-label"><i class="bi bi-graph-up me-2"></i>30 Hari Terakhir</div>
                 </div>
             </div>
         </div>
 
         <!-- Daftar Laporan -->
-        <div class="card">
+        <div class="main-card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <div>
-                    <i class="bi bi-clock-history me-2"></i>Riwayat Laporan
+                    <i class="bi bi-clock-history me-2"></i>Riwayat Laporan Mengajar
                 </div>
                 <div>
-                    <a href="/" class="btn btn-sm btn-outline-primary">
-                        <i class="bi bi-plus-circle me-1"></i>Buat Laporan Baru
+                    <a href="/" class="btn btn-light">
+                        <i class="bi bi-plus-circle me-2"></i>Buat Laporan Baru
                     </a>
                 </div>
             </div>
-            <div class="card-body">
+            <div class="card-body p-4">
                 <% if (laporanList.length === 0) { %>
-                <div class="text-center py-5">
-                    <i class="bi bi-journal-x" style="font-size: 4rem; color: #dee2e6;"></i>
-                    <h4 class="mt-3 text-muted">Belum ada laporan</h4>
-                    <p class="text-muted">Mulai buat laporan harian Anda</p>
-                    <a href="/" class="btn btn-primary mt-3">
+                <div class="empty-state">
+                    <i class="bi bi-journal-x"></i>
+                    <h4 class="mt-4">Belum Ada Laporan</h4>
+                    <p class="text-muted mb-4">Mulai dokumentasikan kegiatan mengajar Anda</p>
+                    <a href="/" class="btn btn-primary-custom">
                         <i class="bi bi-plus-circle me-2"></i>Buat Laporan Pertama
                     </a>
                 </div>
                 <% } else { %>
-                    <% laporanList.forEach(laporan => { %>
+                    <% laporanList.forEach((laporan, index) => { %>
                     <div class="laporan-card">
                         <div class="row align-items-center">
-                            <div class="col-md-3">
-                                <h5 class="mb-1"><%= laporan.tanggal %></h5>
-                                <small class="text-muted">Kelas: <%= laporan.kelas %></small>
+                            <div class="col-lg-3 col-md-12 mb-3 mb-lg-0">
+                                <div class="laporan-date">
+                                    <i class="bi bi-calendar-event"></i>
+                                    <div>
+                                        <div style="font-size: 1.1rem;"><%= laporan.tanggal ? laporan.tanggal.split(',')[0] : '' %></div>
+                                        <small style="font-size: 0.85rem; font-weight: 600; color: #667eea;">
+                                            <%= laporan.tanggal ? laporan.tanggal.split(',').slice(1).join(',').trim() : '' %>
+                                        </small>
+                                    </div>
+                                </div>
+                                <div class="laporan-kelas">
+                                    <i class="bi bi-bookmark-fill me-1"></i><%= laporan.kelas || '-' %>
+                                </div>
                             </div>
-                            <div class="col-md-4">
-                                <div class="mb-1">
-                                    <span class="badge bg-info me-2">
-                                        <i class="bi bi-clock me-1"></i><%= laporan.jadwal?.length || 0 %> Jam
+                            
+                            <div class="col-lg-4 col-md-12 mb-3 mb-lg-0">
+                                <div class="d-flex flex-wrap gap-2">
+                                    <span class="badge badge-info-custom">
+                                        <i class="bi bi-clock me-1"></i><%= laporan.jadwal?.length || 0 %> Jam Mengajar
                                     </span>
-                                    <span class="badge bg-success">
+                                    <span class="badge badge-success-custom">
                                         <i class="bi bi-person-check me-1"></i>
                                         <% 
                                             const hadirCount = laporan.kehadiran?.filter(k => k.status === 'H').length || 0;
@@ -191,26 +382,28 @@
                                         <%= hadirCount %>/<%= totalCount %> Hadir
                                     </span>
                                 </div>
-                                <% if (laporan.kendala) { %>
-                                <small class="text-truncate d-block" style="max-width: 300px;">
-                                    <i class="bi bi-exclamation-triangle text-warning me-1"></i>
-                                    <%= laporan.kendala.substring(0, 50) %>...
-                                </small>
+                                <% if (laporan.kendala && laporan.kendala.trim() !== '') { %>
+                                <div class="kendala-badge mt-2">
+                                    <i class="bi bi-exclamation-triangle-fill"></i>
+                                    <span class="text-truncate" style="max-width: 250px;">
+                                        <%= laporan.kendala.substring(0, 40) %><%= laporan.kendala.length > 40 ? '...' : '' %>
+                                    </span>
+                                </div>
                                 <% } %>
                             </div>
-                            <div class="col-md-5 text-end">
-                                <div class="btn-group btn-group-sm">
-                                    <a href="/rekap/edit/<%= laporan.id %>" class="btn btn-edit">
-                                        <i class="bi bi-pencil me-1"></i>Edit
+                            
+                            <div class="col-lg-5 col-md-12 text-lg-end">
+                                <div class="d-flex flex-wrap justify-content-lg-end justify-content-start gap-2">
+                                    <a href="/rekap/edit/<%= laporan.id %>" class="btn btn-action btn-edit">
+                                        <i class="bi bi-pencil-square me-1"></i>Edit
                                     </a>
-                                    <a href="/ekspor/<%= laporan.id %>" class="btn btn-ekspor">
-                                        <i class="bi bi-download me-1"></i>Ekspor DOCX
+                                    <a href="/ekspor/<%= laporan.id %>" class="btn btn-action btn-ekspor">
+                                        <i class="bi bi-file-earmark-word me-1"></i>Ekspor
                                     </a>
                                     <form action="/rekap/hapus/<%= laporan.id %>" method="POST" 
-                                          style="display: inline;">
-                                        <button type="submit" class="btn btn-hapus" 
-                                                onclick="return confirm('Hapus laporan tanggal <%= laporan.tanggal %>?')">
-                                            <i class="bi bi-trash me-1"></i>Hapus
+                                          style="display: inline;" onsubmit="return confirm('Hapus laporan tanggal <%= laporan.tanggal %>?\n\nTindakan ini tidak dapat dibatalkan!')">
+                                        <button type="submit" class="btn btn-action btn-hapus">
+                                            <i class="bi bi-trash-fill me-1"></i>Hapus
                                         </button>
                                     </form>
                                 </div>
